@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../src/api_i2p.dart' as rust;
+import '../src/rust/api/i2p.dart' as rust;
 
 /// I2P embebido vía emissary: singleton que gestiona el ciclo de vida del
 /// router (habla DIRECTO por SAMv3, sin puente local) y expone GET y
