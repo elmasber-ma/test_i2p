@@ -33,7 +33,11 @@ pub fn i2p_probe_sam() -> String {
         Some(p) => p,
         None => return "apagado: no hay puerto SAM".into(),
     };
-    let r = state::runtime().as_ref().map_err(|e| e.clone())?.block_on(async {
+    let rt = match state::runtime().as_ref() {
+        Ok(r) => r,
+        Err(e) => return format!("runtime no disponible: {e}"),
+    };
+    let r = rt.block_on(async {
         tokio::net::TcpStream::connect(("127.0.0.1", port))
             .await
             .map(|_| ())

@@ -135,11 +135,13 @@ async fn arrancar(
         ..Default::default()
     };
 
-    let (router, _events, router_info) = Router::<Runtime>::new(config, None, Some(Arc::new(storage)))
+    let storage_arc = Arc::new(storage);
+
+    let (router, _events, router_info) = Router::<Runtime>::new(config, None, Some(storage_arc.clone()))
         .await
         .map_err(|e| format!("arranque del router: {e}"))?;
 
-    storage
+    storage_arc
         .store_local_router_info(router_info)
         .await
         .map_err(|e| format!("guardar router info local: {e}"))?;

@@ -45,7 +45,7 @@ async fn abrir_tunel(url: &str) -> Result<(tokio::net::TcpStream, String), Strin
 }
 
 async fn pedir_texto(url: &str) -> Result<(u16, Vec<u8>), String> {
-    let (mut s, recurso) = abrir_tunel(url)?;
+    let (mut s, recurso) = abrir_tunel(url).await?;
     let host = reqwest::Url::parse(url)
         .ok()
         .and_then(|u| u.host_str().map(|h| h.to_string()))
@@ -85,8 +85,7 @@ async fn pedir_texto(url: &str) -> Result<(u16, Vec<u8>), String> {
 }
 
 async fn pedir_archivo(url: &str, dest_path: &str) -> Result<u64, String> {
-    use std::io::Write;
-    let (mut s, recurso) = abrir_tunel(url)?;
+    let (mut s, recurso) = abrir_tunel(url).await?;
     let host = reqwest::Url::parse(url)
         .ok()
         .and_then(|u| u.host_str().map(|h| h.to_string()))
@@ -97,6 +96,8 @@ async fn pedir_archivo(url: &str, dest_path: &str) -> Result<u64, String> {
     s.write_all(req.as_bytes())
         .await
         .map_err(|e| format!("enviar request: {e}"))?;
+
+    use std::io::Write;
 
     let mut f = std::fs::File::create(dest_path)
         .map_err(|e| format!("crear {dest_path}: {e}"))?;

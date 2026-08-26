@@ -10,8 +10,8 @@ crate-type = ["cdylib", "staticlib"]
 flutter_rust_bridge = "=2.12.0"
 tokio = { version = "1.44.1", features = ["full"] }
 # --- I2P embebido (emissary: router Rust puro, LICENCIA MIT) ---
-emissary-core = { git = "https://github.com/eepnet/emissary.git" }
-emissary-util = { git = "https://github.com/eepnet/emissary.git", default-features = false, features = ["rustls", "tokio"] }
+emissary-core = { git = "https://github.com/eepnet/emissary.git", tag = "v0.4.0" }
+emissary-util = { git = "https://github.com/eepnet/emissary.git", tag = "v0.4.0", default-features = false, features = ["rustls", "tokio"] }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 
 [lints.rust]
