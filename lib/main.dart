@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'screens/i2p_prueba_screen.dart';
 import 'screens/i2p_test_screen.dart';
+import 'src/rust/frb_generated.dart';
 
 /// App mínima para probar I2P embebido (emissary) sin arrastrar el resto
 /// del motor: compila rápido y aísla los errores de la red I2P.
@@ -10,7 +11,9 @@ import 'screens/i2p_test_screen.dart';
 ///  · EJEMPLOS → demo fija (stats.i2p) + campos libres de GET y descarga.
 ///  · TEST     → opciones del router: estado, iniciar/detener, publicar,
 ///               sonda SAM y registro en vivo.
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await RustLib.init();
   runApp(const TestI2pApp());
 }
 
