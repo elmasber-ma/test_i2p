@@ -48,9 +48,9 @@ class I2pService extends ChangeNotifier {
   /// Estado humano reportado por Rust (apagado/bootstrapeando/corriendo/listo).
   Future<void> refresh() async {
     try {
-      _running = await rust.i2pIsRunning();
-      _samPort = await rust.i2pSamPort();
-      _state = await rust.i2pEstado();
+      _running = await rust.i2PIsRunning();
+      _samPort = await rust.i2PSamPort();
+      _state = await rust.i2PEstado();
     } catch (_) {}
     notifyListeners();
   }
@@ -77,7 +77,7 @@ class I2pService extends ChangeNotifier {
 
       final sam = await _freePort();
       final trans = await _freePort();
-      final msg = await rust.i2pStart(
+      final msg = await rust.i2PStart(
           dataDir: dir.path,
           samPort: sam,
           transportPort: trans,
@@ -96,7 +96,7 @@ class I2pService extends ChangeNotifier {
   Future<void> stop() async {
     if (_busy) return;
     try {
-      await rust.i2pStop();
+      await rust.i2PStop();
       _state = 'apagado';
       _say('router detenido');
     } catch (e) {
@@ -108,7 +108,7 @@ class I2pService extends ChangeNotifier {
   /// Sonda SAM (sube el estado a "listo" al primer OK).
   Future<String> probeSam() async {
     try {
-      final r = await rust.i2pProbeSam();
+      final r = await rust.i2PProbeSam();
       _say(r);
       await refresh();
       return r;
@@ -122,7 +122,7 @@ class I2pService extends ChangeNotifier {
   Future<String> httpGet(String url) async {
     if (!_running) throw 'I2P no está corriendo';
     try {
-      final r = await rust.i2pHttpGet(url: url);
+      final r = await rust.i2PHttpGet(url: url);
       _say('GET $url ok (${r.length} B)');
       return r;
     } catch (e) {
@@ -147,7 +147,7 @@ class I2pService extends ChangeNotifier {
         if (f.existsSync()) onProgress?.call(f.lengthSync());
       });
       final n =
-          await rust.i2pDownload(url: url, destPath: savePath);
+          await rust.i2PDownload(url: url, destPath: savePath);
       _say('descargado $url → $savePath ($n B)');
       return savePath;
     } catch (e) {

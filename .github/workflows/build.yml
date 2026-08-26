@@ -137,9 +137,6 @@ jobs:
       - name: Generate Rust <-> Dart bindings
         run: flutter_rust_bridge_codegen generate
 
-      - name: Dump generated i2p.dart
-        run: head -50 lib/src/rust/api/i2p.dart 2>/dev/null || echo "FILE NOT FOUND"
-
       # FAIL FAST: análisis Dart ANTES del build pesado (NDK, wgpu, Gradle).
       # Un error de sintaxis/tipos cuesta ~4 min en vez de 20+.
       # Los warnings no cortan el build; solo los errores.
