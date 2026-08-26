@@ -1,0 +1,18 @@
+[package]
+name = "rust_lib_pr_app"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+flutter_rust_bridge = "=2.12.0"
+tokio = { version = "1.44.1", features = ["full"] }
+# --- I2P embebido (emissary: router Rust puro, LICENCIA MIT; el cliente
+# SAMv3 y la resolución de nombres son propios, sin puente local) ---
+emissary-core = "=0.4.0"
+emissary-util = "=0.4.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
