@@ -9,16 +9,10 @@ crate-type = ["cdylib", "staticlib"]
 [dependencies]
 flutter_rust_bridge = "=2.12.0"
 tokio = { version = "1.44.1", features = ["full"] }
-# --- I2P embebido (emissary: router Rust puro, LICENCIA MIT; el cliente
-# SAMv3 y la resolución de nombres son propios, sin puente local) ---
+# --- I2P embebido (emissary: router Rust puro, LICENCIA MIT) ---
 emissary-core = "=0.4.0"
-emissary-util = "=0.4.0"
-# hosts.txt + Url parse (solo clearnet, no Tor)
+emissary-util = { version = "=0.4.0", default-features = false, features = ["rustls"] }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
-# emissary-util trae reqwest 0.12 con default-tls (openssl); vendored
-# compila OpenSSL desde fuente para Android cruzado.
-[target.'cfg(target_os = "android")'.dependencies]
-openssl-sys = { version = "0.9", features = ["vendored"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
