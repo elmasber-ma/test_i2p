@@ -26,6 +26,7 @@ pub fn i2p_start(
     sam_port: u16,
     transport_port: u16,
     publicar: bool,
+    reseed_hosts: Vec<String>,
 ) -> Result<String, String> {
     if state::router_vivo() {
         return Err("I2P ya está corriendo".into());
@@ -41,7 +42,7 @@ pub fn i2p_start(
     state::runtime()
         .as_ref()
         .map_err(|e| e.clone())?
-        .block_on(async move { arrancar(base, sam_port, transport_port, publicar).await })
+        .block_on(async move { arrancar(base, sam_port, transport_port, publicar, reseed_hosts).await })
 }
 
 async fn arrancar(
@@ -49,6 +50,7 @@ async fn arrancar(
     sam_port: u16,
     transport_port: u16,
     publicar: bool,
+    reseed_hosts: Vec<String>,
 ) -> Result<String, String> {
     let storage = Storage::new::<Runtime>(Some(base))
         .await
@@ -69,8 +71,13 @@ async fn arrancar(
     // Reseed solo la primera vez (HTTPS a floodfills claros); después los
     // routers conocidos viven en disco.
     if routers.is_empty() {
-        match Reseeder::reseed::<Runtime>(None, false).await {
+        eprintln!("[i2p] routers vacíos, intentando reseed con {} hosts...", reseed_hosts.len());
+        for (i, h) in reseed_hosts.iter().enumerate() {
+            eprintln!("[i2p]   host[{i}]: {h}");
+        }
+        match Reseeder::reseed::<Runtime>(Some(reseed_hosts), true).await {
             Ok(nuevos) => {
+                eprintln!("[i2p] reseed OK: {} routers descargados", nuevos.len());
                 for info in nuevos {
                     storage
                         .store_router_info(info.name.to_string(), info.router_info.clone())
@@ -80,10 +87,13 @@ async fn arrancar(
                 }
             }
             Err(e) if routers.is_empty() => {
+                eprintln!("[i2p] reseed FALLO y no hay routers guardados: {e}");
                 return Err(format!("reseed falló y no hay routers guardados: {e}"));
             }
             Err(e) => eprintln!("[i2p] reseed falló (hay {nombres} en disco): {e}", nombres = routers.len()),
         }
+    } else {
+        eprintln!("[i2p] {} routers en disco, saltando reseed", routers.len());
     }
 
     // Multiplataforma sin recortes: IPv4+IPv6, PQ activo, transit como el

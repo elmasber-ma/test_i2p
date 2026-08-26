@@ -23,6 +23,25 @@ class I2pService extends ChangeNotifier {
   bool _publicar = false;
   final _log = <String>[];
 
+  /// Reseed hosts que Dart pasa a Rust. Editables desde la UI o config.
+  List<String> reseedHosts = const [
+    'https://reseed.stormycloud.org/',
+    'https://reseed-pl.i2pd.xyz/',
+    'https://reseed-fr.i2pd.xyz/',
+    'https://www2.mk16.de/',
+    'https://reseed2.i2p.net/',
+    'https://banana.incognet.io/',
+    'https://reseed.diva.exchange/',
+    'https://reseed.i2pgit.org/',
+    'https://i2p.novg.net/',
+    'https://reseed.onion.im/',
+    'https://reseed.memcpy.io/',
+    'https://i2pseed.creativecowpat.net:8443/',
+    'https://reseed.sahil.world/',
+    'https://i2p.diyarciftci.xyz/',
+    'https://spiral.likogan.dev/',
+  ];
+
   bool get busy => _busy;
   String get state => _state;
   bool get running => _running;
@@ -81,7 +100,8 @@ class I2pService extends ChangeNotifier {
           dataDir: dir.path,
           samPort: sam,
           transportPort: trans,
-          publicar: _publicar);
+          publicar: _publicar,
+          reseedHosts: reseedHosts);
       _state = 'corriendo';
       _say(msg);
     } catch (e) {

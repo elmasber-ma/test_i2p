@@ -8,8 +8,9 @@ pub fn i2p_start(
     sam_port: u16,
     transport_port: u16,
     publicar: bool,
+    reseed_hosts: Vec<String>,
 ) -> Result<String, String> {
-    i2p::i2p_start(data_dir, sam_port, transport_port, publicar)
+    i2p::i2p_start(data_dir, sam_port, transport_port, publicar, reseed_hosts)
 }
 
 #[flutter_rust_bridge::frb]
