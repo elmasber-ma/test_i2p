@@ -13,6 +13,8 @@ tokio = { version = "1.44.1", features = ["full"] }
 # SAMv3 y la resolución de nombres son propios, sin puente local) ---
 emissary-core = "=0.4.0"
 emissary-util = "=0.4.0"
+# hosts.txt + Url parse (solo clearnet, no Tor)
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
