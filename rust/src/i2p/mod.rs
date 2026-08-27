@@ -15,6 +15,7 @@ mod state;
 mod status;
 mod tunnel;
 
+pub use log::log_push;
 pub use router::{i2p_is_running, i2p_start, i2p_stop};
 pub use status::{i2p_estado, i2p_probe_sam, i2p_sam_port};
 pub use tunnel::{i2p_download, i2p_http_get};

@@ -8,7 +8,7 @@ use emissary_util::runtime::tokio::Runtime;
 use emissary_util::storage::{Storage, StorageBundle};
 use emissary_util::su3::Su3;
 
-use crate::api::logs::log_push;
+use super::log::log_push;
 use super::state;
 
 /// Arranca el router I2P. Bloquea mientras bootstrapea/reseededea (llamar
@@ -147,8 +147,9 @@ async fn arrancar(
             log_push(&format!(
                 "=== RESEED FALLÓ: 0 routers, {total_ms}ms, {n} hosts ==="
             ));
+            let logs = super::log::log_get().join("\n");
             return Err(format!(
-                "reseed falló: 0 routers de {n} hosts en {total_ms}ms"
+                "reseed falló: 0 routers de {n} hosts en {total_ms}ms\n{logs}"
             ));
         }
         log_push(&format!(
@@ -227,9 +228,17 @@ async fn arrancar(
         *g = Some(handle);
     }
     state::estado_set(2);
-    Ok(format!(
-        "router vivo · SAMv3 127.0.0.1:{sam_port} · transports en {transport_port} (no publicados)"
-    ))
+    // devolver también el log de reseed para que Dart lo muestre sin FRB poll
+    let logs = super::log::log_get().join("\n");
+    if logs.is_empty() {
+        Ok(format!(
+            "router vivo · SAMv3 127.0.0.1:{sam_port} · transports en {transport_port} (no publicados)"
+        ))
+    } else {
+        Ok(format!(
+            "router vivo · SAMv3 127.0.0.1:{sam_port} · transports en {transport_port} (no publicados)\n{logs}"
+        ))
+    }
 }
 
 /// Corta el router. Idempotente.

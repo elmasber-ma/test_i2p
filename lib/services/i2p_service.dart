@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../src/rust/api/i2p.dart' as rust;
-import '../src/rust/api/logs.dart' as logs_rust;
 
 /// I2P embebido vía emissary: singleton que gestiona el ciclo de vida del
 /// router (habla DIRECTO por SAMv3, sin puente local) y expone GET y
@@ -58,21 +57,10 @@ class I2pService extends ChangeNotifier {
 
   List<String> get log => List.unmodifiable(_log);
 
-  /// Obtener logs del Rust (reseed por URL con tiempos).
-  Future<List<String>> getLogs() async {
-    try {
-      final raw = await logs_rust.i2pGetLogs();
-      if (raw.isEmpty) return [];
-      return raw.split('\n').where((l) => l.isNotEmpty).toList();
-    } catch (_) {
-      return [];
-    }
-  }
+  /// Obtener logs — ahora solo Dart (Rust ya incluye reseed en el mensaje de start)
+  Future<List<String>> getLogs() async => List.unmodifiable(_log);
 
   Future<void> clearLogs() async {
-    try {
-      await logs_rust.i2pClearLogs();
-    } catch (_) {}
     _log.clear();
     notifyListeners();
   }
@@ -123,10 +111,14 @@ class I2pService extends ChangeNotifier {
           publicar: _publicar,
           reseedHosts: reseedHosts);
       _state = 'corriendo';
-      _say(msg);
+      for (final line in msg.split('\n').where((l) => l.isNotEmpty)) {
+        _say(line);
+      }
     } catch (e) {
       _state = 'error';
-      _say('ERROR: $e');
+      for (final line in e.toString().split('\n').where((l) => l.isNotEmpty)) {
+        _say(line.startsWith('ERROR:') ? line : 'ERROR: $line');
+      }
     } finally {
       _busy = false;
       await refresh();
