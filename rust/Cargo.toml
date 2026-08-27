@@ -12,6 +12,7 @@ tokio = { version = "1.44.1", features = ["full"] }
 # --- I2P embebido (emissary: router Rust puro, LICENCIA MIT) ---
 emissary-core = { git = "https://github.com/eepnet/emissary.git" }
 emissary-util = { git = "https://github.com/eepnet/emissary.git", default-features = false, features = ["rustls", "tokio"] }
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 tracing = "0.1"
 
 [lints.rust]

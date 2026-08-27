@@ -7,6 +7,7 @@ use emissary_core::{Config, Ntcp2Config, SamConfig, Ssu2Config, TransitConfig};
 use emissary_util::reseeder::Reseeder;
 use emissary_util::runtime::tokio::Runtime;
 use emissary_util::storage::{Storage, StorageBundle};
+use emissary_util::su3::Su3;
 
 use super::log::log_push;
 use super::state;
@@ -52,7 +53,7 @@ async fn arrancar(
     publicar: bool,
     reseed_hosts: Vec<String>,
 ) -> Result<String, String> {
-    let storage = Storage::new::<Runtime>(Some(base))
+    let storage = Storage::new::<Runtime>(Some(base.clone()))
         .await
         .map_err(|e| format!("storage: {e}"))?;
 
@@ -69,32 +70,64 @@ async fn arrancar(
     } = storage.load().await;
 
     // Reseed vía API oficial emissary (en memoria, sin parse manual) — privado siempre guarda en disco.
+    // 1) prueba local primero: /Download/i2pseeds.su3 o assets/i2pseeds.su3 (m3u en memoria sin parse manual → Su3::parse_reseed en memoria)
     if routers.is_empty() {
-        let n = reseed_hosts.len();
-        log_push(&format!("=== RESEED: {n} hosts via Reseeder (en memoria) ==="));
         let t0 = Instant::now();
-        match Reseeder::reseed::<Runtime>(Some(reseed_hosts.clone()), false).await {
-            Ok(v) => {
-                let total_ms = t0.elapsed().as_millis();
-                log_push(&format!("=== RESEED OK: {} routers en {total_ms}ms ===", v.len()));
-                for info in v {
-                    storage
-                        .store_router_info(info.name.to_string(), info.router_info.clone())
-                        .await
-                        .map_err(|e| format!("guardar router info: {e}"))?;
-                    routers.push(info.router_info);
+        let mut local_ok = false;
+        let local_candidates = [
+            "/storage/emulated/0/Download/i2pseeds.su3".to_string(),
+            base.join("i2pseeds.su3").display().to_string(),
+        ];
+        for cand in &local_candidates {
+            if let Ok(bytes) = tokio::fs::read(cand).await {
+                log_push(&format!("=== RESEED local: {cand} ({}B) ===", bytes.len()));
+                // intenta verify true → fallback false (cert expirado)
+                let parsed = Su3::parse_reseed(&bytes, true)
+                    .or_else(|| Su3::parse_reseed(&bytes, false));
+                if let Some(v) = parsed {
+                    log_push(&format!("=== RESEED local OK: {} routers ===", v.len()));
+                    for info in v {
+                        let _ = storage
+                            .store_router_info(info.name.to_string(), info.router_info.clone())
+                            .await;
+                        routers.push(info.router_info);
+                    }
+                    local_ok = true;
+                    break;
+                } else {
+                    log_push(&format!("=== RESEED local parse fail: {cand} ==="));
                 }
-                // guardar copia privada del conteo como archivo marker para debug (m3u en memoria ya está en Storage)
-                let marker = base.join("reseed.ok");
-                let _ = tokio::fs::write(&marker, format!("{} routers {}", routers.len(), total_ms)).await;
-                log_push(&format!("privado guardado en {}", marker.display()));
             }
-            Err(e) => {
-                let total_ms = t0.elapsed().as_millis();
-                log_push(&format!("=== RESEED FALLÓ: {e} ({total_ms}ms, {n} hosts) ==="));
-                let logs = super::log::log_get().join("\n");
-                return Err(format!("reseed falló: {e} en {total_ms}ms\n{logs}"));
+        }
+        if !local_ok {
+            let n = reseed_hosts.len();
+            log_push(&format!("=== RESEED: {n} hosts via Reseeder (en memoria) ==="));
+            match Reseeder::reseed::<Runtime>(Some(reseed_hosts.clone()), false).await {
+                Ok(v) => {
+                    let total_ms = t0.elapsed().as_millis();
+                    log_push(&format!("=== RESEED OK: {} routers en {total_ms}ms ===", v.len()));
+                    for info in v {
+                        storage
+                            .store_router_info(info.name.to_string(), info.router_info.clone())
+                            .await
+                            .map_err(|e| format!("guardar router info: {e}"))?;
+                        routers.push(info.router_info);
+                    }
+                    // guardar copia privada marker (m3u en memoria ya está en Storage)
+                    let marker = base.join("reseed.ok");
+                    let _ = tokio::fs::write(&marker, format!("{} routers {}", routers.len(), total_ms)).await;
+                    log_push(&format!("privado guardado en {}", marker.display()));
+                }
+                Err(e) => {
+                    let total_ms = t0.elapsed().as_millis();
+                    log_push(&format!("=== RESEED FALLÓ: {e} ({total_ms}ms, {n} hosts) ==="));
+                    let logs = super::log::log_get().join("\n");
+                    return Err(format!("reseed falló: {e} en {total_ms}ms\n{logs}"));
+                }
             }
+        } else {
+            let total_ms = t0.elapsed().as_millis();
+            log_push(&format!("=== RESEED local OK total {} routers en {total_ms}ms ===", routers.len()));
         }
     } else {
         log_push(&format!(
