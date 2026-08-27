@@ -13,15 +13,8 @@ pub fn log_push(m: &str) {
 }
 
 #[flutter_rust_bridge::frb]
-pub fn i2p_get_logs() -> Result<String, String> {
-    let s = LOGS
-        .lock()
-        .map_err(|e| format!("{e}"))?
-        .iter()
-        .map(|s| s.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-    Ok(s)
+pub fn i2p_get_logs() -> String {
+    LOGS.lock().map(|g| g.join("\n")).unwrap_or_default()
 }
 
 #[flutter_rust_bridge::frb]
