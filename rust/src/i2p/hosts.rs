@@ -6,12 +6,14 @@ use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
-/// Mirrors clearnet públicos de hosts.txt; se prueba en orden.
+/// Mirrors clearnet públicos de hosts.txt; se prueba en orden (solo clearnet válidos).
 const FUENTES: &[&str] = &[
-    "https://raw.githubusercontent.com/JustABoy/i2p-get/master/hosts.txt",
-    "https://download.i2p2.no/hosts.txt",
-    "https://stats.i2p/downloads/hosts.txt",
+    "https://i2p.net/hosts.txt",
+    "https://raw.githubusercontent.com/i2p/i2p.i2p/master/installer/resources/hosts.txt",
 ];
+
+/// Fallback embebido (m3u txt) — sin parsear como json, texto plano nombre=base64
+const EMBEDDED_TXT: &str = include_str!("../../assets/hosts.txt");
 
 /// Se re-baja si el cacheado tiene más de 7 días.
 const CADUCIDAD: Duration = Duration::from_secs(7 * 24 * 3600);
@@ -102,11 +104,21 @@ async fn asegurar_mapa(data_dir: &str) -> Result<Mapa, String> {
             }
             Ok(m)
         }
-        None => mapa_disco.ok_or_else(|| {
-            "hosts.txt no disponible (sin mirrors ni caché): usá xxx.b32.i2p \
-             o el destino base64 completo"
-                .into()
-        }),
+        None => {
+            // 3) fallback embebido — no bloquea router, permite empezar sin host
+            let emb = parsear(EMBEDDED_TXT);
+            if !emb.is_empty() {
+                let _ = std::fs::write(&cache, EMBEDDED_TXT);
+                if let Ok(mut g) = celda().lock() {
+                    *g = Some((SystemTime::now(), emb.clone()));
+                }
+                return Ok(emb);
+            }
+            mapa_disco.ok_or_else(|| {
+                "hosts.txt no disponible (sin mirrors ni caché): sin host o buscando host podes empezar — usá xxx.b32.i2p o base64"
+                    .into()
+            })
+        }
     }
 }
 
