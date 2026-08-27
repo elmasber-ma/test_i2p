@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../src/rust/api/i2p.dart' as rust;
+import '../src/rust/api/logs.dart' as logs_rust;
 
 /// I2P embebido vía emissary: singleton que gestiona el ciclo de vida del
 /// router (habla DIRECTO por SAMv3, sin puente local) y expone GET y
@@ -60,7 +61,7 @@ class I2pService extends ChangeNotifier {
   /// Obtener logs del Rust (reseed por URL con tiempos).
   Future<List<String>> getLogs() async {
     try {
-      final raw = await rust.i2pGetLogs();
+      final raw = await logs_rust.i2pGetLogs();
       if (raw.isEmpty) return [];
       return raw.split('\n').where((l) => l.isNotEmpty).toList();
     } catch (_) {
@@ -70,7 +71,7 @@ class I2pService extends ChangeNotifier {
 
   Future<void> clearLogs() async {
     try {
-      await rust.i2pClearLogs();
+      await logs_rust.i2pClearLogs();
     } catch (_) {}
     _log.clear();
     notifyListeners();
