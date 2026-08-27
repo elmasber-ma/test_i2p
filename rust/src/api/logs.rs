@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 static LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-pub fn log_push(m: &str) {
+pub(crate) fn log_push(m: &str) {
     eprintln!("[i2p] {m}");
     if let Ok(mut logs) = LOGS.lock() {
         logs.insert(0, m.to_string());
