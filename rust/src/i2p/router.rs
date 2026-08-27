@@ -99,7 +99,7 @@ async fn arrancar(
                         local_ok = true;
                         break;
                     } else {
-                        log_push(&format!("=== RESEED local parse fail: {cand} (TMPDIR={}) ===", cand, base.display()));
+                        log_push(&format!("=== RESEED local parse fail: {} (TMPDIR={}) ===", cand, base.display()));
                     }
                 }
                 Err(e) => {
@@ -124,7 +124,7 @@ async fn arrancar(
                     }
                     local_ok = true;
                 } else {
-                    log_push("=== RESEED embebido parse fail ===".to_string());
+                    log_push("=== RESEED embebido parse fail ===");
                 }
             }
         }
