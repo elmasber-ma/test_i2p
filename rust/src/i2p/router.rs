@@ -6,7 +6,9 @@ use emissary_core::router::Router;
 use emissary_core::{Config, Ntcp2Config, SamConfig, Ssu2Config, TransitConfig};
 use emissary_util::runtime::tokio::Runtime;
 use emissary_util::storage::{Storage, StorageBundle};
+use emissary_util::certificates::CREATIVECOWPAT_SSL;
 use emissary_util::su3::Su3;
+use reqwest::Certificate;
 
 use super::log::log_push;
 use super::state;
@@ -74,15 +76,21 @@ async fn arrancar(
         log_push(&format!("=== RESEED: {n} hosts, 5s timeout c/u ==="));
         let t0 = Instant::now();
 
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
-            .user_agent("Wget/1.11.4")
-            .build()
-            .map_err(|e| format!("http client: {e}"))?;
+        let client = {
+            let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(15));
+            if let Ok(cert) = Certificate::from_pem(CREATIVECOWPAT_SSL.as_bytes()) {
+                builder = builder.add_root_certificate(cert);
+            }
+            builder
+                .user_agent("Wget/1.11.4")
+                .build()
+                .map_err(|e| format!("http client: {e}"))?
+        };
 
         for (i, host) in reseed_hosts.iter().enumerate() {
             let t1 = Instant::now();
-            let url = format!("{host}/i2pseeds.su3");
+            let host_trim = host.trim_end_matches('/');
+            let url = format!("{host_trim}/i2pseeds.su3");
             log_push(&format!("[{}/{}] {url} ...", i + 1, n));
 
             let bytes = match client.get(&url).send().await {
@@ -119,7 +127,15 @@ async fn arrancar(
             };
 
             let ms = t1.elapsed().as_millis();
-            match Su3::parse_reseed(&bytes, true) {
+            // primero intenta con verificación (true); si falla por cert expirado, reintenta sin verificar
+            let parsed = Su3::parse_reseed(&bytes, true).or_else(|| {
+                log_push(&format!(
+                    "[{}/{}] {host} → verify fail, reintentando sin verify ({ms}ms)",
+                    i + 1, n
+                ));
+                Su3::parse_reseed(&bytes, false)
+            });
+            match parsed {
                 Some(nuevos) => {
                     log_push(&format!(
                         "[{}/{}] {host} → OK {} routers ({ms}ms)",
