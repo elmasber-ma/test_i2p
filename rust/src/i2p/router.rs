@@ -77,23 +77,30 @@ async fn arrancar(
         std::env::set_var("TMPDIR", base.display().to_string());
         let _ = std::fs::create_dir_all(&base);
         let mut local_ok = false;
-        // privado: base/i2pseeds.su3 si Dart lo copió (sin tocar Download directo para evitar Permission denied)
-        let cand = base.join("i2pseeds.su3").display().to_string();
-        if let Ok(bytes) = tokio::fs::read(&cand).await {
-            log_push(&format!("=== RESEED local privado: {cand} ({}B) ===", bytes.len()));
-            let parsed = Su3::parse_reseed(&bytes, true).or_else(|| Su3::parse_reseed(&bytes, false));
-            if let Some(v) = parsed {
-                log_push(&format!("=== RESEED local OK: {} routers ===", v.len()));
-                for info in v {
-                    let _ = storage.store_router_info(info.name.to_string(), info.router_info.clone()).await;
-                    routers.push(info.router_info);
+        // si está en Download lo lee directo (sin copiar), si no prueba privado
+        let dl_cand = "/storage/emulated/0/Download/i2pseeds.su3".to_string();
+        let priv_cand = base.join("i2pseeds.su3").display().to_string();
+        for cand in [dl_cand, priv_cand] {
+            match tokio::fs::read(&cand).await {
+                Ok(bytes) => {
+                    log_push(&format!("=== RESEED local: {cand} ({}B) ===", bytes.len()));
+                    let parsed = Su3::parse_reseed(&bytes, true).or_else(|| Su3::parse_reseed(&bytes, false));
+                    if let Some(v) = parsed {
+                        log_push(&format!("=== RESEED local OK: {} routers ===", v.len()));
+                        for info in v {
+                            let _ = storage.store_router_info(info.name.to_string(), info.router_info.clone()).await;
+                            routers.push(info.router_info);
+                        }
+                        local_ok = true;
+                        break;
+                    } else {
+                        log_push(&format!("=== RESEED local parse fail: {} ===", cand));
+                    }
                 }
-                local_ok = true;
-            } else {
-                log_push(&format!("=== RESEED local parse fail: {} ===", cand));
+                Err(e) => {
+                    log_push(&format!("=== RESEED local no encontrado {}: {} ===", cand, e));
+                }
             }
-        } else {
-            log_push(&format!("=== RESEED local no encontrado {} (usando embebido) ===", cand));
         }
         // fallback embebido en binario (varios su3 48-65K) — sin parse manual extra, Su3 en memoria
         if !local_ok {
