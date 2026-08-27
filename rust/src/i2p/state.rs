@@ -19,6 +19,9 @@ pub(super) static ESTADO: std::sync::atomic::AtomicU8 = std::sync::atomic::Atomi
 pub(super) static SAM_PORT: std::sync::atomic::AtomicU16 =
     std::sync::atomic::AtomicU16::new(0);
 
+/// Log global del módulo (reseed, arranque, errores). Visible desde Dart.
+pub static LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
 use std::sync::atomic::Ordering;
 
 pub(super) fn estado_set(v: u8) {
@@ -44,6 +47,33 @@ pub(super) fn data_dir_get() -> String {
 /// ¿Hay tarea de router viva?
 pub(crate) fn router_vivo() -> bool {
     matches!(ROUTER_TASK.lock(), Ok(g) if g.as_ref().map(|h| !h.is_finished()).unwrap_or(false))
+}
+
+/// Push línea al log global.
+pub fn log_push(m: &str) {
+    debug_print(m);
+    if let Ok(mut logs) = LOGS.lock() {
+        logs.insert(0, m.to_string());
+        if logs.len() > 200 {
+            logs.truncate(200);
+        }
+    }
+}
+
+/// Obtener copia del log.
+pub fn log_get() -> Vec<String> {
+    LOGS.lock().map(|g| g.clone()).unwrap_or_default()
+}
+
+/// Limpiar log.
+pub fn log_clear() {
+    if let Ok(mut logs) = LOGS.lock() {
+        logs.clear();
+    }
+}
+
+fn debug_print(m: &str) {
+    eprintln!("[i2p] {m}");
 }
 
 /// Runtime tokio global del módulo (patrón tor.rs): &'static Result para no

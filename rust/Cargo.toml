@@ -14,7 +14,6 @@ emissary-core = { git = "https://github.com/eepnet/emissary.git" }
 emissary-util = { git = "https://github.com/eepnet/emissary.git", default-features = false, features = ["rustls", "tokio"] }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

@@ -47,3 +47,13 @@ pub fn i2p_http_get(url: String) -> Result<String, String> {
 pub fn i2p_download(url: String, dest_path: String) -> Result<u64, String> {
     i2p::i2p_download(url, dest_path)
 }
+
+#[flutter_rust_bridge::frb]
+pub fn i2p_get_logs() -> Vec<String> {
+    i2p::log_get()
+}
+
+#[flutter_rust_bridge::frb]
+pub fn i2p_clear_logs() {
+    i2p::log_clear()
+}

@@ -1,13 +1,12 @@
-//! Ciclo de vida del router emissary embebido. Porte del ejemplo oficial
-//! rust-tutorial ajustado a móvil: sin puertos publicados (no inbound),
-//! IPv4 solamente y transit tunnels en cero (batería).
+//! Ciclo de vida del router emissary embebido.
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use emissary_core::router::Router;
 use emissary_core::{Config, Ntcp2Config, SamConfig, Ssu2Config, TransitConfig};
-use emissary_util::reseeder::Reseeder;
 use emissary_util::runtime::tokio::Runtime;
 use emissary_util::storage::{Storage, StorageBundle};
+use emissary_util::su3::Su3;
 
 use super::state;
 
@@ -39,14 +38,6 @@ pub fn i2p_start(
 
     let base = std::path::Path::new(&data_dir).join(".emissary");
 
-    // Init tracing para ver logs del reseeder
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "emissary=debug".parse().unwrap()),
-        )
-        .try_init();
-
     state::runtime()
         .as_ref()
         .map_err(|e| e.clone())?
@@ -76,32 +67,98 @@ async fn arrancar(
         ssu2_static_key,
     } = storage.load().await;
 
-    // Reseed solo la primera vez (HTTPS a floodfills claros); después los
-    // routers conocidos viven en disco.
+    // Reseed: HTTP directo por URL, 5s timeout cada una, log en pantalla.
     if routers.is_empty() {
-        eprintln!("[i2p] routers vacíos, intentando reseed con {} hosts...", reseed_hosts.len());
-        for (i, h) in reseed_hosts.iter().enumerate() {
-            eprintln!("[i2p]   host[{i}]: {h}");
-        }
-        match Reseeder::reseed::<Runtime>(Some(reseed_hosts), true).await {
-            Ok(nuevos) => {
-                eprintln!("[i2p] reseed OK: {} routers descargados", nuevos.len());
-                for info in nuevos {
-                    storage
-                        .store_router_info(info.name.to_string(), info.router_info.clone())
-                        .await
-                        .map_err(|e| format!("guardar router info: {e}"))?;
-                    routers.push(info.router_info);
+        let n = reseed_hosts.len();
+        state::log_push(&format!("=== RESEED: {n} hosts, 5s timeout c/u ==="));
+        let t0 = Instant::now();
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .user_agent("Wget/1.11.4")
+            .build()
+            .map_err(|e| format!("http client: {e}"))?;
+
+        for (i, host) in reseed_hosts.iter().enumerate() {
+            let t1 = Instant::now();
+            let url = format!("{host}/i2pseeds.su3");
+            state::log_push(&format!("[{}/{}] {url} ...", i + 1, n));
+
+            let bytes = match client.get(&url).send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if !status.is_success() {
+                        let ms = t1.elapsed().as_millis();
+                        state::log_push(&format!(
+                            "[{}/{}] {host} → HTTP {status} ({ms}ms)",
+                            i + 1, n
+                        ));
+                        continue;
+                    }
+                    match resp.bytes().await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            let ms = t1.elapsed().as_millis();
+                            state::log_push(&format!(
+                                "[{}/{}] {host} → body err ({ms}ms): {e}",
+                                i + 1, n
+                            ));
+                            continue;
+                        }
+                    }
+                }
+                Err(e) => {
+                    let ms = t1.elapsed().as_millis();
+                    state::log_push(&format!(
+                        "[{}/{}] {host} → FAIL ({ms}ms): {e}",
+                        i + 1, n
+                    ));
+                    continue;
+                }
+            };
+
+            let ms = t1.elapsed().as_millis();
+            match Su3::parse_reseed(&bytes, true) {
+                Some(nuevos) => {
+                    state::log_push(&format!(
+                        "[{}/{}] {host} → OK {} routers ({ms}ms)",
+                        i + 1, n, nuevos.len()
+                    ));
+                    for info in nuevos {
+                        storage
+                            .store_router_info(info.name.to_string(), info.router_info.clone())
+                            .await
+                            .map_err(|e| format!("guardar router info: {e}"))?;
+                        routers.push(info.router_info);
+                    }
+                }
+                None => {
+                    state::log_push(&format!(
+                        "[{}/{}] {host} → SU3 parse fail ({ms}ms, {}B)",
+                        i + 1, n, bytes.len()
+                    ));
                 }
             }
-            Err(e) if routers.is_empty() => {
-                eprintln!("[i2p] reseed FALLO y no hay routers guardados: {e}");
-                return Err(format!("reseed falló y no hay routers guardados: {e}"));
-            }
-            Err(e) => eprintln!("[i2p] reseed falló (hay {nombres} en disco): {e}", nombres = routers.len()),
         }
+
+        let total_ms = t0.elapsed().as_millis();
+        if routers.is_empty() {
+            state::log_push(&format!(
+                "=== RESEED FALLÓ: 0 routers, {total_ms}ms, {n} hosts ==="
+            ));
+            return Err(format!(
+                "reseed falló: 0 routers de {n} hosts en {total_ms}ms"
+            ));
+        }
+        state::log_push(&format!(
+            "=== RESEED OK: {} routers en {total_ms}ms ===",
+            routers.len()
+        ));
     } else {
-        eprintln!("[i2p] {} routers en disco, saltando reseed", routers.len());
+        state::log_push(&format!(
+            "{} routers en disco, saltando reseed",
+            routers.len()
+        ));
     }
 
     // Multiplataforma sin recortes: IPv4+IPv6, PQ activo, transit como el

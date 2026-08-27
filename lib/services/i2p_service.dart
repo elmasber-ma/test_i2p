@@ -57,6 +57,23 @@ class I2pService extends ChangeNotifier {
 
   List<String> get log => List.unmodifiable(_log);
 
+  /// Obtener logs del Rust (reseed por URL con tiempos).
+  Future<List<String>> getLogs() async {
+    try {
+      return await rust.i2pGetLogs();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> clearLogs() async {
+    try {
+      await rust.i2pClearLogs();
+    } catch (_) {}
+    _log.clear();
+    notifyListeners();
+  }
+
   void _say(String m) {
     debugPrint('[i2p] $m');
     _log.insert(0, m);
