@@ -70,22 +70,52 @@ async fn arrancar(
     } = storage.load().await;
 
     // Reseed vía API oficial emissary (en memoria, sin parse manual) — privado siempre guarda en disco.
-    // 1) prueba local primero: /Download/i2pseeds.su3 o assets/i2pseeds.su3 (m3u en memoria sin parse manual → Su3::parse_reseed en memoria)
+    // 1) prueba local primero: i2pseeds.su3 en Download o en privado (copiado por Dart)
     if routers.is_empty() {
         let t0 = Instant::now();
+        // asegurar que TempDir use dir privado escribible en Android (evita /tmp sin permiso)
+        std::env::set_var("TMPDIR", base.display().to_string());
+        let _ = std::fs::create_dir_all(&base);
         let mut local_ok = false;
         let local_candidates = [
             "/storage/emulated/0/Download/i2pseeds.su3".to_string(),
             base.join("i2pseeds.su3").display().to_string(),
         ];
         for cand in &local_candidates {
-            if let Ok(bytes) = tokio::fs::read(cand).await {
-                log_push(&format!("=== RESEED local: {cand} ({}B) ===", bytes.len()));
-                // intenta verify true → fallback false (cert expirado)
-                let parsed = Su3::parse_reseed(&bytes, true)
-                    .or_else(|| Su3::parse_reseed(&bytes, false));
+            match tokio::fs::read(cand).await {
+                Ok(bytes) => {
+                    log_push(&format!("=== RESEED local: {cand} ({}B) ===", bytes.len()));
+                    // intenta verify true → fallback false (cert expirado)
+                    let parsed = Su3::parse_reseed(&bytes, true)
+                        .or_else(|| Su3::parse_reseed(&bytes, false));
+                    if let Some(v) = parsed {
+                        log_push(&format!("=== RESEED local OK: {} routers ===", v.len()));
+                        for info in v {
+                            let _ = storage
+                                .store_router_info(info.name.to_string(), info.router_info.clone())
+                                .await;
+                            routers.push(info.router_info);
+                        }
+                        local_ok = true;
+                        break;
+                    } else {
+                        log_push(&format!("=== RESEED local parse fail: {cand} (TMPDIR={}) ===", cand, base.display()));
+                    }
+                }
+                Err(e) => {
+                    log_push(&format!("=== RESEED local no encontrado {cand}: {e} ==="));
+                }
+            }
+        }
+        // fallback embebido en binario (assets/i2pseeds.su3 48K) — sin parse manual extra, Su3 en memoria
+        if !local_ok {
+            const EMBEDDED: &[u8] = include_bytes!("../../assets/i2pseeds.su3");
+            if !EMBEDDED.is_empty() && EMBEDDED.starts_with(b"I2Psu3") {
+                log_push(&format!("=== RESEED embebido: {}B ===", EMBEDDED.len()));
+                let parsed = Su3::parse_reseed(EMBEDDED, true)
+                    .or_else(|| Su3::parse_reseed(EMBEDDED, false));
                 if let Some(v) = parsed {
-                    log_push(&format!("=== RESEED local OK: {} routers ===", v.len()));
+                    log_push(&format!("=== RESEED embebido OK: {} routers ===", v.len()));
                     for info in v {
                         let _ = storage
                             .store_router_info(info.name.to_string(), info.router_info.clone())
@@ -93,9 +123,8 @@ async fn arrancar(
                         routers.push(info.router_info);
                     }
                     local_ok = true;
-                    break;
                 } else {
-                    log_push(&format!("=== RESEED local parse fail: {cand} ==="));
+                    log_push("=== RESEED embebido parse fail ===".to_string());
                 }
             }
         }
