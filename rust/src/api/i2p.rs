@@ -49,11 +49,12 @@ pub fn i2p_download(url: String, dest_path: String) -> Result<u64, String> {
 }
 
 #[flutter_rust_bridge::frb]
-pub fn i2p_get_logs() -> Vec<String> {
-    i2p::log_get()
+pub fn i2p_get_logs() -> String {
+    i2p::log_get().join("\n")
 }
 
 #[flutter_rust_bridge::frb]
-pub fn i2p_clear_logs() {
+pub fn i2p_clear_logs() -> Result<(), String> {
     i2p::log_clear();
+    Ok(())
 }

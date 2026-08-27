@@ -60,7 +60,9 @@ class I2pService extends ChangeNotifier {
   /// Obtener logs del Rust (reseed por URL con tiempos).
   Future<List<String>> getLogs() async {
     try {
-      return await rust.i2pGetLogs();
+      final raw = await rust.i2pGetLogs();
+      if (raw.isEmpty) return [];
+      return raw.split('\n').where((l) => l.isNotEmpty).toList();
     } catch (_) {
       return [];
     }
