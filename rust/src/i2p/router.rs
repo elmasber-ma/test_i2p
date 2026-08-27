@@ -8,6 +8,7 @@ use emissary_util::runtime::tokio::Runtime;
 use emissary_util::storage::{Storage, StorageBundle};
 use emissary_util::su3::Su3;
 
+use crate::api::i2p::log_push;
 use super::state;
 
 /// Arranca el router I2P. Bloquea mientras bootstrapea/reseededea (llamar
@@ -70,7 +71,7 @@ async fn arrancar(
     // Reseed: HTTP directo por URL, 5s timeout cada una, log en pantalla.
     if routers.is_empty() {
         let n = reseed_hosts.len();
-        state::log_push(&format!("=== RESEED: {n} hosts, 5s timeout c/u ==="));
+        log_push(&format!("=== RESEED: {n} hosts, 5s timeout c/u ==="));
         let t0 = Instant::now();
 
         let client = reqwest::Client::builder()
@@ -82,14 +83,14 @@ async fn arrancar(
         for (i, host) in reseed_hosts.iter().enumerate() {
             let t1 = Instant::now();
             let url = format!("{host}/i2pseeds.su3");
-            state::log_push(&format!("[{}/{}] {url} ...", i + 1, n));
+            log_push(&format!("[{}/{}] {url} ...", i + 1, n));
 
             let bytes = match client.get(&url).send().await {
                 Ok(resp) => {
                     let status = resp.status();
                     if !status.is_success() {
                         let ms = t1.elapsed().as_millis();
-                        state::log_push(&format!(
+                        log_push(&format!(
                             "[{}/{}] {host} → HTTP {status} ({ms}ms)",
                             i + 1, n
                         ));
@@ -99,7 +100,7 @@ async fn arrancar(
                         Ok(b) => b,
                         Err(e) => {
                             let ms = t1.elapsed().as_millis();
-                            state::log_push(&format!(
+                            log_push(&format!(
                                 "[{}/{}] {host} → body err ({ms}ms): {e}",
                                 i + 1, n
                             ));
@@ -109,7 +110,7 @@ async fn arrancar(
                 }
                 Err(e) => {
                     let ms = t1.elapsed().as_millis();
-                    state::log_push(&format!(
+                    log_push(&format!(
                         "[{}/{}] {host} → FAIL ({ms}ms): {e}",
                         i + 1, n
                     ));
@@ -120,7 +121,7 @@ async fn arrancar(
             let ms = t1.elapsed().as_millis();
             match Su3::parse_reseed(&bytes, true) {
                 Some(nuevos) => {
-                    state::log_push(&format!(
+                    log_push(&format!(
                         "[{}/{}] {host} → OK {} routers ({ms}ms)",
                         i + 1, n, nuevos.len()
                     ));
@@ -133,7 +134,7 @@ async fn arrancar(
                     }
                 }
                 None => {
-                    state::log_push(&format!(
+                    log_push(&format!(
                         "[{}/{}] {host} → SU3 parse fail ({ms}ms, {}B)",
                         i + 1, n, bytes.len()
                     ));
@@ -143,19 +144,19 @@ async fn arrancar(
 
         let total_ms = t0.elapsed().as_millis();
         if routers.is_empty() {
-            state::log_push(&format!(
+            log_push(&format!(
                 "=== RESEED FALLÓ: 0 routers, {total_ms}ms, {n} hosts ==="
             ));
             return Err(format!(
                 "reseed falló: 0 routers de {n} hosts en {total_ms}ms"
             ));
         }
-        state::log_push(&format!(
+        log_push(&format!(
             "=== RESEED OK: {} routers en {total_ms}ms ===",
             routers.len()
         ));
     } else {
-        state::log_push(&format!(
+        log_push(&format!(
             "{} routers en disco, saltando reseed",
             routers.len()
         ));

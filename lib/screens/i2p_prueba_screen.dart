@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../services/i2p_service.dart';
@@ -17,11 +18,25 @@ class _I2pPruebaScreenState extends State<I2pPruebaScreen> {
   final _getCtrl = TextEditingController();
   final _dlCtrl = TextEditingController();
 
-  /// Eepsite canónico (mantenido por zzz, dev core de I2P).
   static const _urlEjemplo = 'http://stats.i2p/';
 
   String _salida = '';
   double? _progreso;
+  List<String> _rustLogs = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _pollLogs();
+  }
+
+  Future<void> _pollLogs() async {
+    while (mounted) {
+      final logs = await _s.getLogs();
+      if (mounted) setState(() => _rustLogs = logs);
+      await Future.delayed(const Duration(seconds: 1));
+    }
+  }
 
   @override
   void dispose() {
@@ -178,6 +193,45 @@ class _I2pPruebaScreenState extends State<I2pPruebaScreen> {
                   ),
                 ),
               ),
+            const Divider(height: 24),
+            // ---------- LOGS Rust
+            Row(children: [
+              const Text('Logs Rust', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.copy, size: 16),
+                tooltip: 'Copiar logs',
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: _rustLogs.join('\n')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Logs copiados'), duration: Duration(seconds: 1)),
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, size: 16),
+                tooltip: 'Limpiar logs',
+                onPressed: () async {
+                  await _s.clearLogs();
+                  setState(() => _rustLogs = []);
+                },
+              ),
+            ]),
+            Container(
+              width: double.infinity,
+              height: 200,
+              color: Colors.black,
+              padding: const EdgeInsets.all(8),
+              child: _rustLogs.isEmpty
+                  ? const Text('(vacío)', style: TextStyle(color: Colors.grey, fontFamily: 'monospace', fontSize: 11))
+                  : ListView.builder(
+                      itemCount: _rustLogs.length,
+                      itemBuilder: (_, i) => Text(
+                        _rustLogs[i],
+                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.lightGreenAccent),
+                      ),
+                    ),
+            ),
           ],
         ),
       ),

@@ -1,6 +1,19 @@
 /// Binding FRB del módulo I2P (patrón laurelia.rs): archivo plano que FRB
 /// convierte en `api/i2p.dart`. La implementación vive en `crate::i2p::*`.
 use crate::i2p;
+use std::sync::Mutex;
+
+pub static LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+pub fn log_push(m: &str) {
+    eprintln!("[i2p] {m}");
+    if let Ok(mut logs) = LOGS.lock() {
+        logs.insert(0, m.to_string());
+        if logs.len() > 200 {
+            logs.truncate(200);
+        }
+    }
+}
 
 #[flutter_rust_bridge::frb]
 pub fn i2p_start(
@@ -50,15 +63,12 @@ pub fn i2p_download(url: String, dest_path: String) -> Result<u64, String> {
 
 #[flutter_rust_bridge::frb]
 pub fn i2p_get_logs() -> Vec<String> {
-    crate::i2p::state::LOGS
-        .lock()
-        .map(|g| g.clone())
-        .unwrap_or_default()
+    LOGS.lock().map(|g| g.clone()).unwrap_or_default()
 }
 
 #[flutter_rust_bridge::frb]
 pub fn i2p_clear_logs() {
-    if let Ok(mut logs) = crate::i2p::state::LOGS.lock() {
+    if let Ok(mut logs) = LOGS.lock() {
         logs.clear();
     }
 }
