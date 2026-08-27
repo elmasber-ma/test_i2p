@@ -12,23 +12,22 @@ pub fn log_push(m: &str) {
     }
 }
 
-pub fn log_get() -> Vec<String> {
-    LOGS.lock().map(|g| g.clone()).unwrap_or_default()
-}
-
-pub fn log_clear() {
-    if let Ok(mut logs) = LOGS.lock() {
-        logs.clear();
-    }
-}
-
 #[flutter_rust_bridge::frb]
-pub fn i2p_get_logs() -> String {
-    log_get().join("\n")
+pub fn i2p_get_logs() -> Result<String, String> {
+    let s = LOGS
+        .lock()
+        .map_err(|e| format!("{e}"))?
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    Ok(s)
 }
 
 #[flutter_rust_bridge::frb]
 pub fn i2p_clear_logs() -> Result<(), String> {
-    log_clear();
+    if let Ok(mut logs) = LOGS.lock() {
+        logs.clear();
+    }
     Ok(())
 }
