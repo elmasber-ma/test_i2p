@@ -1,12 +1,12 @@
 //! Ciclo de vida del router emissary embebido.
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use emissary_core::router::Router;
 use emissary_core::{Config, Ntcp2Config, SamConfig, Ssu2Config, TransitConfig};
+use emissary_util::reseeder::Reseeder;
 use emissary_util::runtime::tokio::Runtime;
 use emissary_util::storage::{Storage, StorageBundle};
-use emissary_util::su3::Su3;
 
 use super::log::log_push;
 use super::state;
@@ -68,108 +68,39 @@ async fn arrancar(
         ssu2_static_key,
     } = storage.load().await;
 
-    // Reseed: HTTP directo por URL, 5s timeout cada una, log en pantalla.
+    // Reseed vía API oficial emissary (en memoria, sin parse manual) — privado siempre guarda en disco.
     if routers.is_empty() {
         let n = reseed_hosts.len();
-        log_push(&format!("=== RESEED: {n} hosts, 5s timeout c/u ==="));
+        log_push(&format!("=== RESEED: {n} hosts via Reseeder (en memoria) ==="));
         let t0 = Instant::now();
-
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(15))
-            .user_agent("Wget/1.11.4")
-            .danger_accept_invalid_certs(true)
-            .build()
-            .map_err(|e| format!("http client: {e}"))?;
-
-        for (i, host) in reseed_hosts.iter().enumerate() {
-            let t1 = Instant::now();
-            let host_trim = host.trim_end_matches('/');
-            let url = format!("{host_trim}/i2pseeds.su3");
-            log_push(&format!("[{}/{}] {url} ...", i + 1, n));
-
-            let bytes = match client.get(&url).send().await {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let ms = t1.elapsed().as_millis();
-                        log_push(&format!(
-                            "[{}/{}] {host} → HTTP {status} ({ms}ms)",
-                            i + 1, n
-                        ));
-                        continue;
-                    }
-                    match resp.bytes().await {
-                        Ok(b) => b,
-                        Err(e) => {
-                            let ms = t1.elapsed().as_millis();
-                            log_push(&format!(
-                                "[{}/{}] {host} → body err ({ms}ms): {e}",
-                                i + 1, n
-                            ));
-                            continue;
-                        }
-                    }
+        match Reseeder::reseed::<Runtime>(Some(reseed_hosts.clone()), false).await {
+            Ok(v) => {
+                let total_ms = t0.elapsed().as_millis();
+                log_push(&format!("=== RESEED OK: {} routers en {total_ms}ms ===", v.len()));
+                for info in v {
+                    storage
+                        .store_router_info(info.name.to_string(), info.router_info.clone())
+                        .await
+                        .map_err(|e| format!("guardar router info: {e}"))?;
+                    routers.push(info.router_info);
                 }
-                Err(e) => {
-                    let ms = t1.elapsed().as_millis();
-                    log_push(&format!(
-                        "[{}/{}] {host} → FAIL ({ms}ms): {e}",
-                        i + 1, n
-                    ));
-                    continue;
-                }
-            };
-
-            let ms = t1.elapsed().as_millis();
-            // primero intenta con verificación (true); si falla por cert expirado, reintenta sin verificar
-            let parsed = Su3::parse_reseed(&bytes, true).or_else(|| {
-                log_push(&format!(
-                    "[{}/{}] {host} → verify fail, reintentando sin verify ({ms}ms)",
-                    i + 1, n
-                ));
-                Su3::parse_reseed(&bytes, false)
-            });
-            match parsed {
-                Some(nuevos) => {
-                    log_push(&format!(
-                        "[{}/{}] {host} → OK {} routers ({ms}ms)",
-                        i + 1, n, nuevos.len()
-                    ));
-                    for info in nuevos {
-                        storage
-                            .store_router_info(info.name.to_string(), info.router_info.clone())
-                            .await
-                            .map_err(|e| format!("guardar router info: {e}"))?;
-                        routers.push(info.router_info);
-                    }
-                }
-                None => {
-                    log_push(&format!(
-                        "[{}/{}] {host} → SU3 parse fail ({ms}ms, {}B)",
-                        i + 1, n, bytes.len()
-                    ));
-                }
+                // guardar copia privada del conteo como archivo marker para debug (m3u en memoria ya está en Storage)
+                let marker = base.join("reseed.ok");
+                let _ = tokio::fs::write(&marker, format!("{} routers {}", routers.len(), total_ms)).await;
+                log_push(&format!("privado guardado en {}", marker.display()));
+            }
+            Err(e) => {
+                let total_ms = t0.elapsed().as_millis();
+                log_push(&format!("=== RESEED FALLÓ: {e} ({total_ms}ms, {n} hosts) ==="));
+                let logs = super::log::log_get().join("\n");
+                return Err(format!("reseed falló: {e} en {total_ms}ms\n{logs}"));
             }
         }
-
-        let total_ms = t0.elapsed().as_millis();
-        if routers.is_empty() {
-            log_push(&format!(
-                "=== RESEED FALLÓ: 0 routers, {total_ms}ms, {n} hosts ==="
-            ));
-            let logs = super::log::log_get().join("\n");
-            return Err(format!(
-                "reseed falló: 0 routers de {n} hosts en {total_ms}ms\n{logs}"
-            ));
-        }
-        log_push(&format!(
-            "=== RESEED OK: {} routers en {total_ms}ms ===",
-            routers.len()
-        ));
     } else {
         log_push(&format!(
-            "{} routers en disco, saltando reseed",
-            routers.len()
+            "{} routers en disco, saltando reseed (privado: {})",
+            routers.len(),
+            base.display()
         ));
     }
 

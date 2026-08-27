@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../src/rust/api/i2p.dart' as rust;
 
@@ -63,6 +64,44 @@ class I2pService extends ChangeNotifier {
   Future<void> clearLogs() async {
     _log.clear();
     notifyListeners();
+  }
+
+  /// Guarda copia pública del reseed en Download (opcional, requiere permiso).
+  /// Privado siempre se guarda en appSupport/i2p_data/.emissary vía Rust Storage.
+  Future<String> saveReseedPublic() async {
+    final support = await getApplicationSupportDirectory();
+    final privateDir = Directory('${support.path}/i2p_data/.emissary');
+    if (!privateDir.existsSync()) throw 'sin datos privados aún (inicia I2P primero)';
+    // pedir permiso en Android 11+
+    if (Platform.isAndroid) {
+      final s = await Permission.manageExternalStorage.request();
+      if (!s.isGranted) {
+        final s2 = await Permission.storage.request();
+        if (!s2.isGranted) throw 'permiso denegado';
+      }
+    }
+    final downloadDir = Directory('/storage/emulated/0/Download');
+    if (!downloadDir.existsSync()) throw 'Download no encontrado';
+    final dest = Directory('${downloadDir.path}/i2p_reseed_${DateTime.now().millisecondsSinceEpoch}');
+    await dest.create(recursive: true);
+    int n = 0;
+    for (final e in privateDir.listSync(recursive: true)) {
+      if (e is File) {
+        final rel = e.path.substring(privateDir.path.length + 1);
+        final target = File('${dest.path}/$rel');
+        await target.parent.create(recursive: true);
+        await e.copy(target.path);
+        n++;
+      }
+    }
+    final msg = 'copiado $n archivos privado→público: ${dest.path}';
+    _say(msg);
+    return dest.path;
+  }
+
+  Future<String> getPrivatePath() async {
+    final support = await getApplicationSupportDirectory();
+    return '${support.path}/i2p_data/.emissary';
   }
 
   void _say(String m) {

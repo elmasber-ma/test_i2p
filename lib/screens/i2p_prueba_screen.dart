@@ -216,6 +216,26 @@ class _I2pPruebaScreenState extends State<I2pPruebaScreen> {
                   setState(() => _rustLogs = []);
                 },
               ),
+              IconButton(
+                icon: const Icon(Icons.save_alt, size: 16),
+                tooltip: 'Guardar m3u público (Download)',
+                onPressed: () async {
+                  try {
+                    final p = await _s.saveReseedPublic();
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Guardado público: $p')),
+                    );
+                    final logs = await _s.getLogs();
+                    setState(() => _rustLogs = logs);
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error guardar: $e')),
+                    );
+                  }
+                },
+              ),
             ]),
             Container(
               width: double.infinity,
