@@ -50,10 +50,15 @@ pub fn i2p_download(url: String, dest_path: String) -> Result<u64, String> {
 
 #[flutter_rust_bridge::frb]
 pub fn i2p_get_logs() -> Vec<String> {
-    i2p::log_get()
+    crate::i2p::state::LOGS
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default()
 }
 
 #[flutter_rust_bridge::frb]
 pub fn i2p_clear_logs() {
-    i2p::log_clear()
+    if let Ok(mut logs) = crate::i2p::state::LOGS.lock() {
+        logs.clear();
+    }
 }

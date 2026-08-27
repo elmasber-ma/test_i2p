@@ -10,7 +10,7 @@
 mod hosts;
 mod router;
 mod sam;
-mod state;
+pub(crate) mod state;
 mod status;
 mod tunnel;
 
