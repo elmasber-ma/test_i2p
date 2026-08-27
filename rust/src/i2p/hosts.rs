@@ -24,7 +24,14 @@ fn celda() -> &'static Mutex<Option<(SystemTime, Mapa)>> {
 }
 
 async fn bajar(url: &str) -> Result<String, String> {
-    let r = reqwest::get(url)
+    let client = reqwest::Client::builder()
+        .user_agent("Wget/1.11.4")
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("client {url}: {e}"))?;
+    let r = client
+        .get(url)
+        .send()
         .await
         .map_err(|e| format!("GET {url}: {e}"))?;
     if !r.status().is_success() {
