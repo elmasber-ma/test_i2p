@@ -77,54 +77,49 @@ async fn arrancar(
         std::env::set_var("TMPDIR", base.display().to_string());
         let _ = std::fs::create_dir_all(&base);
         let mut local_ok = false;
-        let local_candidates = [
-            "/storage/emulated/0/Download/i2pseeds.su3".to_string(),
-            base.join("i2pseeds.su3").display().to_string(),
-        ];
-        for cand in &local_candidates {
-            match tokio::fs::read(cand).await {
-                Ok(bytes) => {
-                    log_push(&format!("=== RESEED local: {cand} ({}B) ===", bytes.len()));
-                    // intenta verify true → fallback false (cert expirado)
-                    let parsed = Su3::parse_reseed(&bytes, true)
-                        .or_else(|| Su3::parse_reseed(&bytes, false));
-                    if let Some(v) = parsed {
-                        log_push(&format!("=== RESEED local OK: {} routers ===", v.len()));
-                        for info in v {
-                            let _ = storage
-                                .store_router_info(info.name.to_string(), info.router_info.clone())
-                                .await;
-                            routers.push(info.router_info);
-                        }
-                        local_ok = true;
-                        break;
-                    } else {
-                        log_push(&format!("=== RESEED local parse fail: {} (TMPDIR={}) ===", cand, base.display()));
-                    }
+        // privado: base/i2pseeds.su3 si Dart lo copió (sin tocar Download directo para evitar Permission denied)
+        let cand = base.join("i2pseeds.su3").display().to_string();
+        if let Ok(bytes) = tokio::fs::read(&cand).await {
+            log_push(&format!("=== RESEED local privado: {cand} ({}B) ===", bytes.len()));
+            let parsed = Su3::parse_reseed(&bytes, true).or_else(|| Su3::parse_reseed(&bytes, false));
+            if let Some(v) = parsed {
+                log_push(&format!("=== RESEED local OK: {} routers ===", v.len()));
+                for info in v {
+                    let _ = storage.store_router_info(info.name.to_string(), info.router_info.clone()).await;
+                    routers.push(info.router_info);
                 }
-                Err(e) => {
-                    log_push(&format!("=== RESEED local no encontrado {cand}: {e} ==="));
-                }
+                local_ok = true;
+            } else {
+                log_push(&format!("=== RESEED local parse fail: {} ===", cand));
             }
+        } else {
+            log_push(&format!("=== RESEED local no encontrado {} (usando embebido) ===", cand));
         }
-        // fallback embebido en binario (assets/i2pseeds.su3 48K) — sin parse manual extra, Su3 en memoria
+        // fallback embebido en binario (varios su3 48-65K) — sin parse manual extra, Su3 en memoria
         if !local_ok {
-            const EMBEDDED: &[u8] = include_bytes!("../../assets/i2pseeds.su3");
-            if !EMBEDDED.is_empty() && EMBEDDED.starts_with(b"I2Psu3") {
-                log_push(&format!("=== RESEED embebido: {}B ===", EMBEDDED.len()));
-                let parsed = Su3::parse_reseed(EMBEDDED, true)
-                    .or_else(|| Su3::parse_reseed(EMBEDDED, false));
+            const EMBEDDEDS: &[&[u8]] = &[
+                include_bytes!("../../assets/i2pseeds.su3"),
+                include_bytes!("../../assets/i2pseeds2.su3"),
+                include_bytes!("../../assets/i2pseeds3.su3"),
+            ];
+            for (idx, emb) in EMBEDDEDS.iter().enumerate() {
+                if emb.is_empty() || !emb.starts_with(b"I2Psu3") {
+                    continue;
+                }
+                log_push(&format!("=== RESEED embebido {}: {}B ===", idx + 1, emb.len()));
+                let parsed = Su3::parse_reseed(emb, true).or_else(|| Su3::parse_reseed(emb, false));
                 if let Some(v) = parsed {
-                    log_push(&format!("=== RESEED embebido OK: {} routers ===", v.len()));
+                    log_push(&format!("=== RESEED embebido {} OK: {} routers ===", idx + 1, v.len()));
                     for info in v {
-                        let _ = storage
-                            .store_router_info(info.name.to_string(), info.router_info.clone())
-                            .await;
+                        let _ = storage.store_router_info(info.name.to_string(), info.router_info.clone()).await;
                         routers.push(info.router_info);
                     }
                     local_ok = true;
                 } else {
-                    log_push("=== RESEED embebido parse fail ===");
+                    log_push(&format!("=== RESEED embebido {} parse fail ===", idx + 1));
+                }
+                if routers.len() >= 80 {
+                    break;
                 }
             }
         }

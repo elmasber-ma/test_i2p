@@ -140,26 +140,8 @@ class I2pService extends ChangeNotifier {
       final support = await getApplicationSupportDirectory();
       final dir = Directory('${support.path}/i2p_data');
       if (!dir.existsSync()) dir.createSync(recursive: true);
-      // local primero: si hay i2pseeds.su3 en Download, copiarlo a privado antes de Reseeder
-      try {
-        if (Platform.isAndroid) {
-          await Permission.storage.request();
-          await Permission.manageExternalStorage.request();
-        }
-        final dl = File('/storage/emulated/0/Download/i2pseeds.su3');
-        if (await dl.exists()) {
-          final bytes = await dl.length();
-          _say('local su3 detectado Download/i2pseeds.su3 (${bytes}B), copiando a privado...');
-          final dest = File('${dir.path}/.emissary/i2pseeds.su3');
-          await dest.parent.create(recursive: true);
-          await dl.copy(dest.path);
-          _say('copiado local a ${dest.path}');
-        } else {
-          _say('local su3 no está en Download, usando embebido/Reseeder');
-        }
-      } catch (e) {
-        _say('nota: no se pudo copiar su3 local: $e');
-      }
+      // app tiene m3u/su3 embebido (rust/assets/i2pseeds*.su3) — no mira Download (evita Permission denied)
+      _say('usando su3 embebido + Reseeder si hace falta');
 
       final sam = await _freePort();
       final trans = await _freePort();
