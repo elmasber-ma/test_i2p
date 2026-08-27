@@ -8,7 +8,7 @@ use emissary_util::runtime::tokio::Runtime;
 use emissary_util::storage::{Storage, StorageBundle};
 use emissary_util::su3::Su3;
 
-use crate::api::i2p::log_push;
+use crate::i2p::log_push;
 use super::state;
 
 /// Arranca el router I2P. Bloquea mientras bootstrapea/reseededea (llamar

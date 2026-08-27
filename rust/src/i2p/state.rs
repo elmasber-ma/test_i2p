@@ -20,7 +20,6 @@ pub(super) static SAM_PORT: std::sync::atomic::AtomicU16 =
     std::sync::atomic::AtomicU16::new(0);
 
 /// Log global del módulo (reseed, arranque, errores). Visible desde Dart.
-
 use std::sync::atomic::Ordering;
 
 pub(super) fn estado_set(v: u8) {
