@@ -6,9 +6,7 @@ use emissary_core::router::Router;
 use emissary_core::{Config, Ntcp2Config, SamConfig, Ssu2Config, TransitConfig};
 use emissary_util::runtime::tokio::Runtime;
 use emissary_util::storage::{Storage, StorageBundle};
-use emissary_util::certificates::CREATIVECOWPAT_SSL;
 use emissary_util::su3::Su3;
-use reqwest::Certificate;
 
 use super::log::log_push;
 use super::state;
@@ -76,16 +74,12 @@ async fn arrancar(
         log_push(&format!("=== RESEED: {n} hosts, 5s timeout c/u ==="));
         let t0 = Instant::now();
 
-        let client = {
-            let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(15));
-            if let Ok(cert) = Certificate::from_pem(CREATIVECOWPAT_SSL.as_bytes()) {
-                builder = builder.add_root_certificate(cert);
-            }
-            builder
-                .user_agent("Wget/1.11.4")
-                .build()
-                .map_err(|e| format!("http client: {e}"))?
-        };
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(15))
+            .user_agent("Wget/1.11.4")
+            .danger_accept_invalid_certs(true)
+            .build()
+            .map_err(|e| format!("http client: {e}"))?;
 
         for (i, host) in reseed_hosts.iter().enumerate() {
             let t1 = Instant::now();
