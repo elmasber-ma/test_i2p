@@ -48,13 +48,4 @@ pub fn i2p_download(url: String, dest_path: String) -> Result<u64, String> {
     i2p::i2p_download(url, dest_path)
 }
 
-#[flutter_rust_bridge::frb]
-pub fn i2p_get_logs() -> String {
-    i2p::log_get().join("\n")
-}
 
-#[flutter_rust_bridge::frb]
-pub fn i2p_clear_logs() -> Result<(), String> {
-    i2p::log_clear();
-    Ok(())
-}
