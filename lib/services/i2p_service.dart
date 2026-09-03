@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../src/rust/api/i2p.dart' as rust;
+import 'nat_service.dart';
 
 /// I2P embebido vía emissary: singleton que gestiona el ciclo de vida del
 /// router (habla DIRECTO por SAMv3, sin puente local) y expone GET y
@@ -21,8 +22,14 @@ class I2pService extends ChangeNotifier {
   String _state = 'apagado';
   bool _running = false;
   int? _samPort;
-  bool _publicar = false;
+  // Salir a red: publicar + puerto fijo + UPnP siempre activo.
+  bool _publicar = true;
   final _log = <String>[];
+
+  /// Puertos fijos para salir a red (wifi casa UPnP).
+  /// SAM localhost 7656 clásico I2P, transporte NTCP2/SSU2 25515 oficial.
+  static const int samFixed = 7656;
+  static const int transportFixed = 25515;
 
   /// Reseed hosts que Dart pasa a Rust. Editables desde la UI o config.
   List<String> reseedHosts = const [
@@ -48,8 +55,9 @@ class I2pService extends ChangeNotifier {
   bool get running => _running;
   int? get samPort => _samPort;
 
-  /// Publicar direcciones de transporte en NetDb (requiere IP real y
-  /// puerto alcanzable; tras CGNAT no sirve). Default off.
+  /// Publicar direcciones de transporte en NetDb (salir a red).
+  /// Requiere IP alcanzable + UPnP en wifi casa; tras CGNAT no sirve.
+  /// Default on (siempre UPnP según orden).
   bool get publicar => _publicar;
   set publicar(bool v) {
     _publicar = v;
@@ -130,6 +138,20 @@ class I2pService extends ChangeNotifier {
     return p;
   }
 
+  /// Intenta bindear [port] fijo; si está ocupado usa uno libre al azar.
+  Future<int> _takePort(int port, String nombre) async {
+    try {
+      final s = await ServerSocket.bind(InternetAddress.anyIPv4, port,
+          v6Only: false);
+      await s.close();
+      return port;
+    } catch (_) {
+      final p = await _freePort();
+      _say('$nombre fijo $port ocupado, usando $p');
+      return p;
+    }
+  }
+
   /// Arranca el router (persiste a nivel app hasta stop explícito).
   Future<void> start() async {
     if (_busy || _running) return;
@@ -143,8 +165,23 @@ class I2pService extends ChangeNotifier {
       // app tiene m3u/su3 embebido (rust/assets/i2pseeds*.su3) — no mira Download (evita Permission denied)
       _say('usando su3 embebido + Reseeder si hace falta');
 
-      final sam = await _freePort();
-      final trans = await _freePort();
+      final sam = await _takePort(samFixed, 'SAM');
+      final trans = await _takePort(transportFixed, 'transporte');
+      // UPnP siempre activo: mapear transporte TCP+UDP antes de arrancar.
+      _say('UPnP: buscando gateway…');
+      final gw = await NatService.instance.discover();
+      if (gw == null) {
+        _say('UPnP: sin gateway, sigo solo outbound');
+      } else {
+        final tcp = await NatService.instance
+            .openTcp(localPort: trans, description: 'i2p-ntcp2');
+        final udp = await NatService.instance
+            .openUdp(localPort: trans, description: 'i2p-ssu2');
+        final extIp = await NatService.instance.externalIp();
+        _say('UPnP: gw ok${extIp != null ? ' ip=$extIp' : ''} '
+            'tcp=${tcp ?? 'fail'} udp=${udp ?? 'fail'} (local $trans)');
+      }
+      _publicar = true;
       final msg = await rust.i2PStart(
           dataDir: dir.path,
           samPort: sam,
@@ -172,6 +209,8 @@ class I2pService extends ChangeNotifier {
       await rust.i2PStop();
       _state = 'apagado';
       _say('router detenido');
+      await NatService.instance.closeAll();
+      _say('UPnP: mapeos cerrados');
     } catch (e) {
       _say('ERROR stop: $e');
     }
