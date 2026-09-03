@@ -21,7 +21,8 @@ use super::state;
 /// puerto igual). Solo activar con IP real + puerto forwardeado. IPv6 va
 /// siempre activo; si el equipo no tiene v6 el bind de salida simplemente
 /// no alcanza peers v6 y sigue por v4.
-#[flutter_rust_bridge::frb]
+//
+// Implementación pelada (sin #[frb]): el puente FRB vive solo en api/i2p.rs.
 pub fn i2p_start(
     data_dir: String,
     sam_port: u16,
@@ -318,7 +319,6 @@ async fn contar_netdb(base: &std::path::Path) -> usize {
 }
 
 /// Corta el router. Idempotente.
-#[flutter_rust_bridge::frb]
 pub fn i2p_stop() -> Result<(), String> {
     state::estado_set(0);
     if let Ok(mut g) = state::ROUTER_TASK.lock() {
@@ -332,7 +332,6 @@ pub fn i2p_stop() -> Result<(), String> {
 
 /// ¿El router sigue vivo? Detecta muertes silenciosas (Android en segundo
 /// plano) igual que tor_is_running con is_finished().
-#[flutter_rust_bridge::frb]
 pub fn i2p_is_running() -> bool {
     state::router_vivo()
 }

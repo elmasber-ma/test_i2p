@@ -4,7 +4,6 @@
 use super::state;
 
 /// Estado humano del ciclo de vida del router I2P.
-#[flutter_rust_bridge::frb]
 pub fn i2p_estado() -> String {
     match state::estado_get() {
         1 => "bootstrapeando/reseeding…".into(),
@@ -15,7 +14,6 @@ pub fn i2p_estado() -> String {
 }
 
 /// Puerto SAMv3 activo, o None si está apagado.
-#[flutter_rust_bridge::frb]
 pub fn i2p_sam_port() -> Option<u16> {
     let p = state::sam_port_get();
     if state::router_vivo() && p != 0 {
@@ -27,7 +25,6 @@ pub fn i2p_sam_port() -> Option<u16> {
 
 /// Sonda real: ¿el SAMv3 acepta conexiones? Al primer OK sube el estado a
 /// "listo" (3). No lanza: devuelve diagnóstico en texto.
-#[flutter_rust_bridge::frb]
 pub fn i2p_probe_sam() -> String {
     let port = match i2p_sam_port() {
         Some(p) => p,

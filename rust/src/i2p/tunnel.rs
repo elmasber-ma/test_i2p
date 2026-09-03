@@ -145,7 +145,6 @@ async fn pedir_archivo(url: &str, dest_path: &str) -> Result<u64, String> {
 }
 
 /// GET directo por I2P (eepsites): devuelve "HTTP <status>\n\n<cuerpo>".
-#[flutter_rust_bridge::frb]
 pub fn i2p_http_get(url: String) -> Result<String, String> {
     let fut = async {
         tokio::time::timeout(Duration::from_secs(90), pedir_texto(&url))
@@ -161,7 +160,6 @@ pub fn i2p_http_get(url: String) -> Result<String, String> {
 }
 
 /// Descarga streaming a archivo por I2P; retorna bytes escritos.
-#[flutter_rust_bridge::frb]
 pub fn i2p_download(url: String, dest_path: String) -> Result<u64, String> {
     let fut = async {
         tokio::time::timeout(Duration::from_secs(600), pedir_archivo(&url, &dest_path))
