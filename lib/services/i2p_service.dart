@@ -175,11 +175,25 @@ class I2pService extends ChangeNotifier {
       } else {
         final tcp = await NatService.instance
             .openTcp(localPort: trans, description: 'i2p-ntcp2');
-        final udp = await NatService.instance
+        var udp = await NatService.instance
             .openUdp(localPort: trans, description: 'i2p-ssu2');
+        // reintento UDP una vez: varios gateways lo rechazan al primer intento
+        if (udp == null) {
+          await Future.delayed(const Duration(seconds: 2));
+          udp = await NatService.instance
+              .openUdp(localPort: trans, description: 'i2p-ssu2');
+        }
         final extIp = await NatService.instance.externalIp();
-        _say('UPnP: gw ok${extIp != null ? ' ip=$extIp' : ''} '
-            'tcp=${tcp ?? 'fail'} udp=${udp ?? 'fail'} (local $trans)');
+        if (tcp != null && udp != null) {
+          _say('UPnP: gw ok${extIp != null ? ' ip=$extIp' : ''} '
+              'tcp=$tcp udp=$udp (local $trans)');
+        } else if (tcp != null) {
+          _say('UPnP: gw ok${extIp != null ? ' ip=$extIp' : ''} '
+              'tcp=$tcp ok (NTCP2 inbound) udp=fail (SSU2 solo outbound, normal en varios routers)');
+        } else {
+          _say('UPnP: mapeo falló${extIp != null ? ' ip=$extIp' : ''} '
+              '(local $trans) — sigo solo outbound');
+        }
       }
       _publicar = true;
       final msg = await rust.i2PStart(

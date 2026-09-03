@@ -69,41 +69,32 @@ async fn arrancar(
         ssu2_static_key,
     } = storage.load().await;
 
-    // Reseed vía API oficial emissary (en memoria, sin parse manual) — privado siempre guarda en disco.
-    // 1) prueba local primero: i2pseeds.su3 en Download o en privado (copiado por Dart)
+    // Reseed: privado → embebido → Download (suave) → red. Local primero
+    // para no depender de red; la red solo si todo lo local falla.
     if routers.is_empty() {
         let t0 = Instant::now();
         // asegurar que TempDir use dir privado escribible en Android (evita /tmp sin permiso)
         std::env::set_var("TMPDIR", base.display().to_string());
         let _ = std::fs::create_dir_all(&base);
-        let mut local_ok = false;
-        // si está en Download lo lee directo (sin copiar), si no prueba privado
-        let dl_cand = "/storage/emulated/0/Download/i2pseeds.su3".to_string();
+        // 1) privado: base/i2pseeds.su3 (sin tocar Download para evitar Permission denied)
         let priv_cand = base.join("i2pseeds.su3").display().to_string();
-        for cand in [dl_cand, priv_cand] {
-            match tokio::fs::read(&cand).await {
-                Ok(bytes) => {
-                    log_push(&format!("=== RESEED local: {cand} ({}B) ===", bytes.len()));
-                    let parsed = Su3::parse_reseed(&bytes, true).or_else(|| Su3::parse_reseed(&bytes, false));
-                    if let Some(v) = parsed {
-                        log_push(&format!("=== RESEED local OK: {} routers ===", v.len()));
-                        for info in v {
-                            let _ = storage.store_router_info(info.name.to_string(), info.router_info.clone()).await;
-                            routers.push(info.router_info);
-                        }
-                        local_ok = true;
-                        break;
-                    } else {
-                        log_push(&format!("=== RESEED local parse fail: {} ===", cand));
-                    }
+        if let Ok(bytes) = tokio::fs::read(&priv_cand).await {
+            log_push(&format!("=== RESEED local privado: {priv_cand} ({}B) ===", bytes.len()));
+            let parsed = Su3::parse_reseed(&bytes, true).or_else(|| Su3::parse_reseed(&bytes, false));
+            if let Some(v) = parsed {
+                log_push(&format!("=== RESEED local OK: {} routers ===", v.len()));
+                for info in v {
+                    let _ = storage.store_router_info(info.name.to_string(), info.router_info.clone()).await;
+                    routers.push(info.router_info);
                 }
-                Err(e) => {
-                    log_push(&format!("=== RESEED local no encontrado {}: {} ===", cand, e));
-                }
+            } else {
+                log_push(&format!("=== RESEED local parse fail: {} ===", priv_cand));
             }
+        } else {
+            log_push(&format!("=== RESEED local no encontrado {} (usando embebido) ===", priv_cand));
         }
         // fallback embebido en binario (varios su3 48-65K) — sin parse manual extra, Su3 en memoria
-        if !local_ok {
+        if routers.is_empty() {
             const EMBEDDEDS: &[&[u8]] = &[
                 include_bytes!("../../assets/i2pseeds.su3"),
                 include_bytes!("../../assets/i2pseeds2.su3"),
@@ -121,7 +112,6 @@ async fn arrancar(
                         let _ = storage.store_router_info(info.name.to_string(), info.router_info.clone()).await;
                         routers.push(info.router_info);
                     }
-                    local_ok = true;
                 } else {
                     log_push(&format!("=== RESEED embebido {} parse fail ===", idx + 1));
                 }
@@ -130,35 +120,69 @@ async fn arrancar(
                 }
             }
         }
-        if !local_ok {
+        // 2b) Download solo si nada local funcionó (último recurso, sin copiar)
+        if routers.is_empty() {
+            let dl_cand = "/storage/emulated/0/Download/i2pseeds.su3".to_string();
+            match tokio::fs::read(&dl_cand).await {
+                Ok(bytes) => {
+                    log_push(&format!("=== RESEED Download: {}B ===", bytes.len()));
+                    let parsed = Su3::parse_reseed(&bytes, true).or_else(|| Su3::parse_reseed(&bytes, false));
+                    if let Some(v) = parsed {
+                        log_push(&format!("=== RESEED Download OK: {} routers ===", v.len()));
+                        for info in v {
+                            let _ = storage.store_router_info(info.name.to_string(), info.router_info.clone()).await;
+                            routers.push(info.router_info);
+                        }
+                    } else {
+                        log_push("=== RESEED Download parse fail ===".to_string());
+                    }
+                }
+                Err(_) => {
+                    log_push("=== RESEED Download sin acceso (permiso), sigo con red ===".to_string());
+                }
+            }
+        }
+        // 3) red siempre: aunque lo local dio routers, los seeders pueden
+        // estar viejos → se intenta Reseeder igual y se mezclan los nuevos.
+        // Si la red falla pero ya hay routers locales, se sigue con esos.
+        {
             let n = reseed_hosts.len();
-            log_push(&format!("=== RESEED: {n} hosts via Reseeder (en memoria) ==="));
+            log_push(&format!("=== RESEED red: {n} hosts via Reseeder ==="));
             match Reseeder::reseed::<Runtime>(Some(reseed_hosts.clone()), false).await {
                 Ok(v) => {
                     let total_ms = t0.elapsed().as_millis();
-                    log_push(&format!("=== RESEED OK: {} routers en {total_ms}ms ===", v.len()));
+                    let mut nuevos = 0usize;
                     for info in v {
                         storage
                             .store_router_info(info.name.to_string(), info.router_info.clone())
                             .await
                             .map_err(|e| format!("guardar router info: {e}"))?;
                         routers.push(info.router_info);
+                        nuevos += 1;
                     }
-                    // guardar copia privada marker (m3u en memoria ya está en Storage)
+                    log_push(&format!(
+                        "=== RESEED red OK: +{nuevos} routers (total {}) en {total_ms}ms ===",
+                        routers.len()
+                    ));
                     let marker = base.join("reseed.ok");
                     let _ = tokio::fs::write(&marker, format!("{} routers {}", routers.len(), total_ms)).await;
                     log_push(&format!("privado guardado en {}", marker.display()));
                 }
                 Err(e) => {
                     let total_ms = t0.elapsed().as_millis();
-                    log_push(&format!("=== RESEED FALLÓ: {e} ({total_ms}ms, {n} hosts) ==="));
-                    let logs = super::log::log_get().join("\n");
-                    return Err(format!("reseed falló: {e} en {total_ms}ms\n{logs}"));
+                    if routers.is_empty() {
+                        log_push(&format!("=== RESEED FALLÓ: {e} ({total_ms}ms, {n} hosts) ==="));
+                        let logs = super::log::log_get().join("\n");
+                        return Err(format!("reseed falló: {e} en {total_ms}ms\n{logs}"));
+                    }
+                    log_push(&format!(
+                        "=== RESEED red falló ({e}), sigo con {} routers locales ===",
+                        routers.len()
+                    ));
                 }
             }
-        } else {
             let total_ms = t0.elapsed().as_millis();
-            log_push(&format!("=== RESEED local OK total {} routers en {total_ms}ms ===", routers.len()));
+            log_push(&format!("=== RESEED total {} routers en {total_ms}ms ===", routers.len()));
         }
     } else {
         log_push(&format!(
@@ -233,17 +257,64 @@ async fn arrancar(
         *g = Some(handle);
     }
     state::estado_set(2);
+    // monitor en background: cada 60s informa netDb para que la UI no quede muda.
+    // Los túneles se construyen solos en 2-10 min; el usuario ve el progreso.
+    {
+        let base_mon = base.clone();
+        let t_boot = Instant::now();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                if !state::router_vivo() {
+                    break;
+                }
+                let n = contar_netdb(&base_mon).await;
+                let mins = t_boot.elapsed().as_secs() / 60;
+                log_push(&format!(
+                    "túneles: router vivo hace {mins}min · netDb {n} archivos en disco · si el GET da timeout, esperá y reintentá"
+                ));
+            }
+        });
+    }
+    let pub_txt = if publicar { "publicados" } else { "no publicados" };
     // devolver también el log de reseed para que Dart lo muestre sin FRB poll
     let logs = super::log::log_get().join("\n");
     if logs.is_empty() {
         Ok(format!(
-            "router vivo · SAMv3 127.0.0.1:{sam_port} · transports en {transport_port} (no publicados)"
+            "router vivo · SAMv3 127.0.0.1:{sam_port} · transports en {transport_port} ({pub_txt})"
         ))
     } else {
         Ok(format!(
-            "router vivo · SAMv3 127.0.0.1:{sam_port} · transports en {transport_port} (no publicados)\n{logs}"
+            "router vivo · SAMv3 127.0.0.1:{sam_port} · transports en {transport_port} ({pub_txt})\n{logs}"
         ))
     }
+}
+
+/// Cuenta archivos bajo base/.emissary (netDb + profiles + keys) como
+/// aproximación del crecimiento de netDb. Barato: unos cientos de archivos.
+async fn contar_netdb(base: &std::path::Path) -> usize {
+    let mut n = 0usize;
+    let mut dirs = vec![base.to_path_buf()];
+    while let Some(d) = dirs.pop() {
+        let mut rd = match tokio::fs::read_dir(&d).await {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        loop {
+            match rd.next_entry().await {
+                Ok(Some(e)) => {
+                    let p = e.path();
+                    if p.is_dir() {
+                        dirs.push(p);
+                    } else {
+                        n += 1;
+                    }
+                }
+                _ => break,
+            }
+        }
+    }
+    n
 }
 
 /// Corta el router. Idempotente.
