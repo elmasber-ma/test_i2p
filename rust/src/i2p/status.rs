@@ -1,6 +1,8 @@
-//! Estado legible del router para la UI (sin EventSubscriber: hitos propios
-//! del ciclo de vida + sonda SAM). Honestidad > detalle: "corriendo" significa
-//! que el proceso vive; "listo" que un HELLO SAM ya respondió.
+//! Estado legible del router para la UI (sonda SAM + netinfo en vivo).
+//! Honestidad > detalle: "corriendo" significa que el proceso vive;
+//! "listo" que un HELLO SAM ya respondió; "red: ..." dice conexiones reales.
+use emissary_core::events::Event;
+
 use super::state;
 
 /// Estado humano del ciclo de vida del router I2P.
@@ -48,5 +50,42 @@ pub fn i2p_probe_sam() -> String {
             format!("SAM vivo en 127.0.0.1:{port}")
         }
         Err(e) => format!("SAM no responde aún ({e}); los túneles siguen construyéndose"),
+    }
+}
+
+/// Resume un Event en una línea para el log/pantalla.
+pub(super) fn resumir_evento(e: &Event) -> String {
+    match e {
+        Event::RouterStatus {
+            transport,
+            tunnel,
+            transit,
+            firewall_statuses,
+            ..
+        } => {
+            let fw = firewall_statuses
+                .iter()
+                .map(|(s, v4)| format!("{}:{}", if *v4 { "v4" } else { "v6" }, s))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                "conectados: {} · túneles ok {}/fallos {} · tránsito {} · fw [{}]",
+                transport.num_connected_routers,
+                tunnel.num_tunnels_built,
+                tunnel.num_tunnel_build_failures,
+                transit.num_tunnels,
+                if fw.is_empty() { "-".into() } else { fw }
+            )
+        }
+        Event::ShuttingDown => "apagando…".into(),
+        Event::ShutDown => "apagado".into(),
+    }
+}
+
+/// Info viva del router para la UI. Vacío honesto si aún no hay datos.
+pub fn i2p_netinfo() -> String {
+    match state::NETINFO.lock().map(|g| g.clone()) {
+        Ok(Some(e)) => resumir_evento(&e),
+        _ => "sin datos aún — túneles construyéndose, esperá".into(),
     }
 }

@@ -119,6 +119,12 @@ class _I2pPruebaScreenState extends State<I2pPruebaScreen> {
                   onPressed: _s.start,
                 ),
             ]),
+            if (_s.running && _s.netinfo.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('red: ${_s.netinfo}',
+                    style: const TextStyle(fontSize: 11, color: Colors.teal)),
+              ),
             const Divider(height: 24),
             // ---------- EJEMPLO fijo
             Card(

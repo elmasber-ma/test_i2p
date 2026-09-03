@@ -54,6 +54,8 @@ class I2pService extends ChangeNotifier {
   String get state => _state;
   bool get running => _running;
   int? get samPort => _samPort;
+  String _netinfo = '';
+  String get netinfo => _netinfo;
 
   /// Publicar direcciones de transporte en NetDb (salir a red).
   /// Requiere IP alcanzable + UPnP en wifi casa; tras CGNAT no sirve.
@@ -119,12 +121,14 @@ class I2pService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Estado humano reportado por Rust (apagado/bootstrapeando/corriendo/listo).
+  /// Estado humano reportado por Rust (apagado/bootstrapeando/corriendo/listo)
+  /// + netinfo en vivo (conectados/túneles/tránsito).
   Future<void> refresh() async {
     try {
       _running = await rust.i2PIsRunning();
       _samPort = await rust.i2PSamPort();
       _state = await rust.i2PEstado();
+      if (_running) _netinfo = await rust.i2PNetinfo();
     } catch (_) {}
     notifyListeners();
   }
@@ -222,6 +226,7 @@ class I2pService extends ChangeNotifier {
     try {
       await rust.i2PStop();
       _state = 'apagado';
+      _netinfo = '';
       _say('router detenido');
       await NatService.instance.closeAll();
       _say('UPnP: mapeos cerrados');

@@ -244,7 +244,7 @@ async fn arrancar(
 
     let storage_arc = Arc::new(storage);
 
-    let (router, _events, router_info) = Router::<Runtime>::new(config, None, Some(storage_arc.clone()))
+    let (router, events, router_info) = Router::<Runtime>::new(config, None, Some(storage_arc.clone()))
         .await
         .map_err(|e| format!("arranque del router: {e}"))?;
 
@@ -258,6 +258,31 @@ async fn arrancar(
         *g = Some(handle);
     }
     state::estado_set(2);
+    // tarea de eventos: cada 15s drena EventSubscriber y guarda el último
+    // RouterStatus; loguea solo cuando cambia para no spamear. Así el log
+    // muestra conexiones/túneles en vivo en vez de quedar mudo.
+    tokio::spawn(async move {
+        let mut events = events;
+        let mut ultimo = String::new();
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+            if !state::router_vivo() {
+                break;
+            }
+            let mut fresh: Option<emissary_core::events::Event> = None;
+            while let Some(e) = events.router_status() {
+                fresh = Some(e);
+            }
+            if let Some(e) = fresh {
+                let txt = super::status::resumir_evento(&e);
+                state::netinfo_set(e);
+                if txt != ultimo {
+                    ultimo = txt.clone();
+                    log_push(&format!("red: {txt}"));
+                }
+            }
+        }
+    });
     // monitor en background: cada 60s informa netDb para que la UI no quede muda.
     // Los túneles se construyen solos en 2-10 min; el usuario ve el progreso.
     {
@@ -321,6 +346,7 @@ async fn contar_netdb(base: &std::path::Path) -> usize {
 /// Corta el router. Idempotente.
 pub fn i2p_stop() -> Result<(), String> {
     state::estado_set(0);
+    state::netinfo_clear();
     if let Ok(mut g) = state::ROUTER_TASK.lock() {
         if let Some(h) = g.take() {
             h.abort();

@@ -5,6 +5,8 @@ use std::sync::{Mutex, OnceLock};
 use tokio::runtime::{Builder, Runtime};
 use tokio::task::JoinHandle;
 
+use emissary_core::events::Event;
+
 /// Tarea del router (futuro `Router` spawneado en tokio). None = apagado;
 /// Some con is_finished() = el router murió por fuera (Android en bg).
 pub(super) static ROUTER_TASK: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
@@ -18,6 +20,11 @@ pub(super) static ESTADO: std::sync::atomic::AtomicU8 = std::sync::atomic::Atomi
 /// Puerto SAMv3 elegido por Dart (libre al azar, mismo patrón que Tor).
 pub(super) static SAM_PORT: std::sync::atomic::AtomicU16 =
     std::sync::atomic::AtomicU16::new(0);
+
+/// Último Event::RouterStatus visto (conectados/túneles/tránsito).
+/// Lo llena la tarea de eventos en router.rs; lo lee status::i2p_netinfo().
+/// Event es Clone + Send + Sync (solo Strings/usizes/vecs), apto para static.
+pub(super) static NETINFO: Mutex<Option<Event>> = Mutex::new(None);
 
 /// Log global del módulo (reseed, arranque, errores). Visible desde Dart.
 use std::sync::atomic::Ordering;
@@ -40,6 +47,20 @@ pub(super) fn sam_port_get() -> u16 {
 
 pub(super) fn data_dir_get() -> String {
     DATA_DIR.lock().map(|g| g.clone()).unwrap_or_default()
+}
+
+/// Guarda el último evento de red visto.
+pub(super) fn netinfo_set(e: Event) {
+    if let Ok(mut g) = NETINFO.lock() {
+        *g = Some(e);
+    }
+}
+
+/// Limpia el netinfo (al detener el router para no mostrar datos viejos).
+pub(super) fn netinfo_clear() {
+    if let Ok(mut g) = NETINFO.lock() {
+        *g = None;
+    }
 }
 
 /// ¿Hay tarea de router viva?

@@ -39,6 +39,11 @@ pub fn i2p_probe_sam() -> String {
 }
 
 #[flutter_rust_bridge::frb]
+pub fn i2p_netinfo() -> String {
+    i2p::i2p_netinfo()
+}
+
+#[flutter_rust_bridge::frb]
 pub fn i2p_http_get(url: String) -> Result<String, String> {
     i2p::i2p_http_get(url)
 }
