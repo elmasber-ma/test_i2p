@@ -134,11 +134,11 @@ async fn arrancar(
                             routers.push(info.router_info);
                         }
                     } else {
-                        log_push("=== RESEED Download parse fail ===".to_string());
+                        log_push("=== RESEED Download parse fail ===");
                     }
                 }
                 Err(_) => {
-                    log_push("=== RESEED Download sin acceso (permiso), sigo con red ===".to_string());
+                    log_push("=== RESEED Download sin acceso (permiso), sigo con red ===");
                 }
             }
         }
